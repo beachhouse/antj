@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<project name="antj-test" default="build">
+    <target name="build" depends="test1.pkg"/>
+
+    <target name="test1.pkg">
+        <jar destfile="test1.pkg">
+            <fileset dir="test1"/>
+        </jar>
+    </target>
+</project>
