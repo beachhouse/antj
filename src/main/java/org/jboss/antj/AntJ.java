@@ -128,6 +128,11 @@ public class AntJ {
                 } else {
                     rc = e;
                 }
+                File toDelete = f;
+                do {
+                    toDelete.deleteOnExit();
+                    toDelete = toDelete.getParentFile();
+                } while (!toDelete.equals(destination));
             }
 
             LOG.log(Level.FINE, "out.create", name);
@@ -141,6 +146,7 @@ public class AntJ {
             }
             try {
                 copy(is, f);
+                f.deleteOnExit();
             } finally {
                 if (is instanceof ZipInputStream)
                     ((ZipInputStream)is).closeEntry();
