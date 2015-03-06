@@ -21,20 +21,24 @@
  */
 package org.jboss.antj;
 
-import org.apache.tools.ant.BuildLogger;
-import org.apache.tools.ant.DefaultLogger;
-import org.apache.tools.ant.Project;
-import org.apache.tools.ant.ProjectHelper;
+import org.jboss.antj.antrunner.spi.AntRunner;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileAttribute;
 import java.text.MessageFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashSet;
@@ -63,31 +67,55 @@ public class AntJ {
         }
     }
 
-    private static void ant(final File directory, final File antFile, final String... args) {
-        final Project project = new Project();
-        ProjectHelper.configureProject(project, antFile);
-        project.init();
-
-        final BuildLogger logger = new DefaultLogger();
-        logger.setOutputPrintStream(System.out);
-        logger.setErrorPrintStream(System.err);
-        logger.setMessageOutputLevel(Project.MSG_INFO);
-        project.addBuildListener(logger);
-
-        project.setBaseDir(directory);
-
-        // TODO: process args
-        final String target;
-        if (args.length > 0) {
-            target = args[0];
-        } else {
-            target = project.getDefaultTarget();
+    private static void ant(final File directory, final File antFile, final String... args) throws IOException {
+        try {
+            final Class<AntRunner> cls = (Class<AntRunner>) AntJ.class.getClassLoader().loadClass("org.jboss.antj.antrunner.AntRunnerImpl");
+            try {
+                final AntRunner runner = cls.newInstance();
+                runner.ant(directory, antFile, args);
+            } catch (InstantiationException e) {
+                throw new RuntimeException(e);
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
+        } catch (ClassNotFoundException ex) {
+            final List<URL> urls = new ArrayList<URL>();
+            Files.walkFileTree(Paths.get(directory.getAbsolutePath() + File.separator + "lib"), new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(final Path path, final BasicFileAttributes basicFileAttributes) throws IOException {
+                    urls.add(path.toUri().toURL());
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+            final URLClassLoader classLoader = new URLClassLoader(urls.toArray(new URL[0]), AntJ.class.getClassLoader());
+            try {
+                final Class<AntRunner> cls = (Class<AntRunner>) classLoader.loadClass("org.jboss.antj.antrunner.AntRunnerImpl");
+                try {
+                    final AntRunner runner = cls.newInstance();
+                    runner.ant(directory, antFile, args);
+                } catch (InstantiationException e) {
+                    throw new RuntimeException(e);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+            }
         }
-        project.executeTarget(target);
     }
 
-    private static void ant(final File directory, final String antFile, final String... args) throws IOException, InterruptedException {
+    private static void ant(final File directory, final String antFile, final String... args) throws IOException {
         ant(directory, new File(directory, antFile), args);
+    }
+
+    static void antj(final ZipFile zipFile, final String... args) throws IOException {
+        final Path tempPath = Files.createTempDirectory("antj", new FileAttribute[0]);
+        tempPath.toFile().deleteOnExit();
+        LOG.finest("Using temporary path " + tempPath);
+
+        extract(tempPath.toFile(), zipFile);
+
+        ant(tempPath.toFile(), ".antj/build.xml", args);
     }
 
     private static byte[] copyBuf = new byte[8192];
@@ -107,8 +135,7 @@ public class AntJ {
             to.write(copyBuf, 0, n);
     }
 
-    private static void extract(final File destination, final String fileName) throws IOException {
-        final ZipFile zf = new ZipFile(fileName);
+    private static void extract(final File destination, final ZipFile zf) throws IOException {
         final Set<ZipEntry> dirs = new HashSet<ZipEntry>() {
             @Override
             public boolean add(final ZipEntry zipEntry) {
@@ -122,7 +149,6 @@ public class AntJ {
             ZipEntry e = zes.nextElement();
             dirs.add(extractFile(destination, zf.getInputStream(e), e));
         }
-        zf.close();
         updateLastModifiedTime(destination, dirs);
     }
 
@@ -193,13 +219,12 @@ public class AntJ {
     }
 
     public static void main(String... args) throws IOException, InterruptedException {
-        final Path tempPath = Files.createTempDirectory("antj", new FileAttribute[0]);
-        tempPath.toFile().deleteOnExit();
-        LOG.finest("Using temporary path " + tempPath);
-
-        extract(tempPath.toFile(), args[0]);
-
-        ant(tempPath.toFile(), ".antj/build.xml", Arrays.copyOfRange(args, 1, args.length));
+        final ZipFile zipFile = new ZipFile(args[0]);
+        try {
+            antj(zipFile, Arrays.copyOfRange(args, 1, args.length));
+        } finally {
+            zipFile.close();
+        }
 
         System.exit(0);
     }
