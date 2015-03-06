@@ -37,6 +37,8 @@ import java.util.List;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
@@ -46,7 +48,7 @@ import java.util.zip.ZipInputStream;
  */
 public class AntJ {
     private static final ResourceBundle RESOURCE_BUNDLE;
-    private static boolean verbose = true;
+    private static Logger LOG = Logger.getLogger(AntJ.class.getName(), AntJ.class.getPackage().getName() + ".resource");
 
     static {
         try {
@@ -128,9 +130,7 @@ public class AntJ {
                 }
             }
 
-            if (verbose) {
-                System.out.println(formatMsg("out.create", name));
-            }
+            LOG.log(Level.FINE, "out.create", name);
         } else {
             if (f.getParent() != null) {
                 File d = new File(f.getParent());
@@ -147,12 +147,10 @@ public class AntJ {
                 else
                     is.close();
             }
-            if (verbose) {
-                if (e.getMethod() == ZipEntry.DEFLATED) {
-                    System.out.println(formatMsg("out.inflated", name));
-                } else {
-                    System.out.println(formatMsg("out.extracted", name));
-                }
+            if (e.getMethod() == ZipEntry.DEFLATED) {
+                LOG.log(Level.FINE, "out.inflated", name);
+            } else {
+                LOG.log(Level.FINE, "out.extracted", name);
             }
         }
         long lastModified = e.getTime();
@@ -178,7 +176,7 @@ public class AntJ {
     public static void main(String... args) throws IOException, InterruptedException {
         final Path tempPath = Files.createTempDirectory("antj", new FileAttribute[0]);
         tempPath.toFile().deleteOnExit();
-        System.out.println(tempPath);
+        LOG.finest("Using temporary path " + tempPath);
 
         extract(tempPath.toFile(), args[0]);
 
