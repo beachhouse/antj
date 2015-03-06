@@ -21,6 +21,11 @@
  */
 package org.jboss.antj;
 
+import org.apache.tools.ant.BuildLogger;
+import org.apache.tools.ant.DefaultLogger;
+import org.apache.tools.ant.Project;
+import org.apache.tools.ant.ProjectHelper;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -58,23 +63,31 @@ public class AntJ {
         }
     }
 
-    private static void ant(final File directory, final String antFile, final String... args) throws IOException, InterruptedException {
-        final ProcessBuilder processBuilder = new ProcessBuilder()
-                .directory(directory)
-                .redirectError(ProcessBuilder.Redirect.INHERIT)
-                .redirectInput(ProcessBuilder.Redirect.INHERIT)
-                .redirectOutput(ProcessBuilder.Redirect.INHERIT);
-        final List<String> command = processBuilder.command();
-        command.add("ant");
-        command.add("-f");
-        command.add(antFile);
-        for (String arg : args) {
-            command.add(arg);
+    private static void ant(final File directory, final File antFile, final String... args) {
+        final Project project = new Project();
+        ProjectHelper.configureProject(project, antFile);
+        project.init();
+
+        final BuildLogger logger = new DefaultLogger();
+        logger.setOutputPrintStream(System.out);
+        logger.setErrorPrintStream(System.err);
+        logger.setMessageOutputLevel(Project.MSG_INFO);
+        project.addBuildListener(logger);
+
+        project.setBaseDir(directory);
+
+        // TODO: process args
+        final String target;
+        if (args.length > 0) {
+            target = args[0];
+        } else {
+            target = project.getDefaultTarget();
         }
-        final Process ant = processBuilder.start();
-        final int rc = ant.waitFor();
-        if (rc != 0)
-            throw new RuntimeException("Ant execution of " + command + " failed");
+        project.executeTarget(target);
+    }
+
+    private static void ant(final File directory, final String antFile, final String... args) throws IOException, InterruptedException {
+        ant(directory, new File(directory, antFile), args);
     }
 
     private static byte[] copyBuf = new byte[8192];
